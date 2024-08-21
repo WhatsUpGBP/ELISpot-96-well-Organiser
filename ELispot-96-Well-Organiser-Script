@@ -1,0 +1,104 @@
+import os 
+from PIL import Image
+from pptx import Presentation
+from pptx.util import Inches
+from math import ceil
+import argparse
+import re
+
+def create_presentation():
+    pres = Presentation() 
+    pres.slide_width = Inches(16)
+    pres.slide_height = Inches(9)
+    slide_layout = pres.slide_layouts[5]
+    slide = pres.slides.add_slide(slide_layout)
+    slide.shapes.title.text = 'ELISpot PowerPoint'
+    slide.shapes.title.height = Inches(2)
+    
+    return pres, slide
+
+def sort_images(image_list):
+
+    def image_key(image_name):
+        match = re.match(r"([A-H])(\d+)", image_name)
+        if match:
+            letter, num = match.groups()
+            # Sorting by letter first and then by number.
+            return (letter, int(num))
+        return ('Z', 999)  # Fallback in case the regex does not match
+    
+    # Sorted by letter first, then by number
+    return sorted(image_list, key=image_key)
+
+def insert_images(pres, slide, first, last, image_width, columns):
+    # Get all of the image files and store their names in a sorted list
+    full_image_list = os.listdir("input_folder")
+
+    # Sort the image list with custom logic
+    full_image_list = sort_images(full_image_list)
+    
+    # Adjusting the first and last to be zero-based for Python lists
+    image_list = full_image_list[first:last+1]
+
+    rows = ceil(len(image_list) / columns)
+    
+    image_list_iterator = iter(image_list) 
+
+    if not image_list:
+        print("[ERROR] No images found in the specified range")
+        exit()
+
+    img = Image.open("input_folder/" + image_list[0])
+    ratio = img.width / image_width
+    image_height = img.height / ratio
+
+    title_height = 2
+    slide_width = 16
+    slide_height = 9
+
+    if image_width * columns > slide_width:
+        print(f"[ERROR] Images of {image_width} width will not fit onto a row with {columns} columns")
+        exit()
+    if image_height * rows > slide_height - title_height:
+        print(f"[ERROR] Images of {image_width} width will not fit into a column with this many rows")
+        exit()
+
+    offset_x = (slide_width / columns) - image_width
+    offset_y = ((slide_height - title_height) / rows) - image_height
+
+    for row in range(0, rows):
+        for column in range(0, columns):
+            try:
+                im = "input_folder/" + next(image_list_iterator)
+                x = column * (image_width + offset_x) + (offset_x / 4)
+                y = title_height + (row * (image_height + offset_y) + (offset_y / 4))
+                slide.shapes.add_picture(im, Inches(x), Inches(y), width=Inches(image_width))
+            except StopIteration:
+                break
+
+    return pres
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--first", type=int, help="First image", default= 0)
+    parser.add_argument("--last", type=int, help="Last image", default= 96)
+    parser.add_argument(
+        "--width",
+        type=float,
+        help="Width of image (Inches). Note a PowerPoint slide is 16 inches wide",
+        default= 0.75
+    )    
+    parser.add_argument(
+        "--columns", type=int, help="Number of columns of images", default= 12
+    )
+    args = parser.parse_args()
+
+    pres, slide = create_presentation()
+    presentation = insert_images(
+        pres, slide, args.first, args.last, args.width, args.columns
+    )
+
+    presentation.save("output_folder/images.pptx")
+
+if __name__ == "__main__":
+    main()
